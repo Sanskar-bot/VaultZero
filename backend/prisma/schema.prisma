@@ -1,0 +1,102 @@
+// ═══════════════════════════════════════════════════════════════════
+// VaultZero — Prisma Schema
+// ═══════════════════════════════════════════════════════════════════
+//
+// SECURITY INVARIANTS:
+// 1. NO column in this schema ever holds a plaintext password or key.
+// 2. wrapped_vault_key is the vault key encrypted with the user's KEK
+//    (derived from their master password via Argon2id). Only the client
+//    can unwrap it.
+// 3. argon2_salt is stored here so any device can re-derive the KEK
+//    from the master password. Without the master password, the salt
+//    alone is useless.
+// 4. ciphertext in vault_blobs is the AES-256-GCM encrypted vault.
+//    Each encryption uses a fresh random IV prepended to the blob.
+// 5. recovery_phrase_hash is SHA-256 of the BIP39-style recovery phrase.
+//    The phrase itself is shown once to the user and never stored.
+// ═══════════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String   @id @default(uuid()) @db.Uuid
+  email            String   @unique
+  argon2Salt       String   @map("argon2_salt")           // base64-encoded, needed to re-derive KEK on any device
+  wrappedVaultKey  String   @map("wrapped_vault_key")     // base64-encoded, vault key encrypted with KEK
+  recoveryHash     String?  @map("recovery_phrase_hash")  // SHA-256 of BIP39 recovery phrase, nullable for migration
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  vaultBlobs VaultBlob[]
+  devices    Device[]
+  auditLogs  AuditLog[]
+
+  @@map("users")
+}
+
+model VaultBlob {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  ciphertext String   @db.Text                          // AES-256-GCM encrypted vault blob (IV prepended)
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("vault_blobs")
+}
+
+model Device {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  publicKey  String   @map("public_key") @db.Text       // device's public key for future E2E device sync
+  deviceName String   @map("device_name")
+  lastSeen   DateTime @default(now()) @map("last_seen")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  auditLogs AuditLog[]
+
+  @@index([userId])
+  @@map("devices")
+}
+
+enum AuditAction {
+  LOGIN
+  VAULT_PULL
+  VAULT_PUSH
+  PASSWORD_CHANGED
+  RECOVERY_USED
+}
+
+model AuditLog {
+  id        String      @id @default(uuid()) @db.Uuid
+  userId    String      @map("user_id") @db.Uuid
+  deviceId  String?     @map("device_id") @db.Uuid       // nullable: some actions (e.g. web login) may not have a device
+  action    AuditAction
+  ipAddress String?     @map("ip_address")
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@map("audit_log")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash")          // SHA-256 of the actual token — never store raw
+  expiresAt DateTime @map("expires_at")
+  used      Boolean  @default(false)                      // single-use: once rotated, mark as used
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}

@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">VaultZero</string>
+    <string name="autofill_service_description">VaultZero Password Manager — zero-knowledge autofill</string>
+</resources>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  VaultZero Android Manifest
+  Implementation: Day 10-11
+
+  Key declarations:
+  - AutofillService: allows VaultZero to provide credentials to other apps
+  - BiometricPrompt: required for vault unlock on Android
+  - INTERNET: needed to sync vault with backend
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.vaultzero">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Material3.DayNight">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- AutofillService registration (Android 8.0+) -->
+        <service
+            android:name=".autofill.VaultZeroAutofillService"
+            android:exported="true"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/autofill_service_config" />
+        </service>
+
+    </application>
+</manifest>

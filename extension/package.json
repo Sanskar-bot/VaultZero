@@ -1,0 +1,27 @@
+{
+  "name": "@vaultzero/extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VaultZero Chrome/Firefox browser extension — Manifest V3, zero-knowledge autofill",
+  "scripts": {
+    "dev": "node esbuild.config.mjs --watch",
+    "build": "node esbuild.config.mjs",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@vaultzero/core": "*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.1",
+    "@types/react-dom": "^19.0.2",
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.2",
+    "eslint": "^9.15.0",
+    "@typescript-eslint/eslint-plugin": "^8.16.0",
+    "@typescript-eslint/parser": "^8.16.0"
+  }
+}

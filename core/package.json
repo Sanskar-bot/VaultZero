@@ -1,0 +1,28 @@
+{
+  "name": "@vaultzero/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zero-knowledge crypto primitives — Argon2id key derivation, AES-256-GCM vault encryption, recovery phrase generation",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest --config jest.config.ts",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "libsodium-wrappers-sumo": "^0.7.15"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/libsodium-wrappers-sumo": "^0.7.8",
+    "@types/node": "^22.10.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2",
+    "eslint": "^9.15.0",
+    "@typescript-eslint/eslint-plugin": "^8.16.0",
+    "@typescript-eslint/parser": "^8.16.0"
+  }
+}

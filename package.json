@@ -1,0 +1,30 @@
+{
+  "name": "vaultzero",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zero-knowledge password manager — the server never sees your passwords",
+  "workspaces": [
+    "core",
+    "backend",
+    "extension",
+    "web"
+  ],
+  "scripts": {
+    "core:build": "npm run build --workspace=core",
+    "core:test": "npm run test --workspace=core",
+    "backend:dev": "npm run dev --workspace=backend",
+    "backend:build": "npm run build --workspace=backend",
+    "extension:dev": "npm run dev --workspace=extension",
+    "extension:build": "npm run build --workspace=extension",
+    "web:dev": "npm run dev --workspace=web",
+    "web:build": "npm run build --workspace=web",
+    "prisma:generate": "npm run prisma:generate --workspace=backend",
+    "prisma:migrate": "npm run prisma:migrate --workspace=backend",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}
