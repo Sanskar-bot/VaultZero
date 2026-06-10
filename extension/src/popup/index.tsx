@@ -1,10 +1,14 @@
 /**
- * Popup Entry Point — renders the React app into #root
+ * src/popup/index.tsx — React Entry Point
  *
- * Implementation: Day 7-8
+ * Mounts the root App component into #root.
+ * Uses React 18 createRoot API.
  */
+import { createRoot } from "react-dom/client";
+import { App } from "./App";
 
-// TODO: Day 7-8 — implement React entry point
-// import React from "react";
-// import { createRoot } from "react-dom/client";
-// import { App } from "./App";
+const rootEl = document.getElementById("root");
+if (!rootEl) throw new Error("Root element #root not found");
+
+const root = createRoot(rootEl);
+root.render(<App />);

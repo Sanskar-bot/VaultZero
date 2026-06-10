@@ -31,10 +31,13 @@ export interface VaultEntry {
 
 /**
  * The complete vault state held in client memory while unlocked.
+ * This is the primary vault data structure used throughout the app.
+ *
+ * All operations on VaultStore are immutable — functions return a new
+ * VaultStore rather than mutating the original.
  */
-export interface Vault {
+export interface VaultStore {
   entries: VaultEntry[];
-  lastSyncedAt: number | null;
 }
 
 /**
@@ -45,6 +48,6 @@ export interface EncryptedVault {
   /** Base64-encoded AES-256-GCM ciphertext (IV prepended) */
   ciphertext: string;
 
-  /** ISO 8601 timestamp of when the server last received a push */
-  updatedAt: string;
+  /** Unix timestamp (ms) of when the vault was last encrypted/pushed */
+  updatedAt: number;
 }

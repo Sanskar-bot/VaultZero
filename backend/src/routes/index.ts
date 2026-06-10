@@ -1,3 +1,8 @@
-export { default as authRouter } from "./auth";
-export { default as vaultRouter } from "./vault";
-export { default as auditRouter } from "./audit";
+/**
+ * Routes barrel export — mounts all routers
+ */
+import authRouter from "./auth";
+import vaultRouter from "./vault";
+import auditRouter from "./audit";
+
+export { authRouter, vaultRouter, auditRouter };

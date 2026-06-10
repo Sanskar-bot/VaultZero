@@ -1,11 +1,10 @@
 /**
- * JWT Utility — sign, verify, and decode tokens
+ * JWT Utility — thin wrappers around jsonwebtoken
  *
- * Token structure:
- * - Access token: { userId, type: "access" }, expires in 15 minutes
- * - Refresh token: random 64 bytes, stored as SHA-256 hash in DB
- *
- * Implementation: Day 4
+ * The actual signing/verifying logic lives in auth.service.ts.
+ * This file re-exports helpers for any future code that needs
+ * standalone JWT operations (e.g. socket auth, CLI tools).
  */
 
-// TODO: Day 4 — implement signAccessToken, verifyAccessToken, generateRefreshToken
+export { verifyJWT } from "../middleware/auth";
+export type { JWTPayload } from "../middleware/auth";

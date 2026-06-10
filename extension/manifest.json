@@ -2,41 +2,37 @@
   "manifest_version": 3,
   "name": "VaultZero",
   "version": "0.1.0",
-  "description": "Zero-knowledge password manager — your passwords never leave your device unencrypted",
-  "permissions": [
-    "storage",
-    "activeTab",
-    "alarms",
-    "clipboardWrite"
-  ],
-  "host_permissions": [
-    "<all_urls>"
-  ],
+  "description": "Zero-knowledge password manager — your vault never leaves your device in plaintext",
+
+  "permissions": ["activeTab", "storage", "clipboardWrite", "alarms"],
+  "host_permissions": ["<all_urls>"],
+
   "background": {
     "service_worker": "dist/background.js",
     "type": "module"
   },
+
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
       "js": ["dist/content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "world": "ISOLATED"
     }
   ],
+
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "assets/icons/icon16.png",
-      "48": "assets/icons/icon48.png",
-      "128": "assets/icons/icon128.png"
+      "16":  "icon-16.png",
+      "48":  "icon-48.png",
+      "128": "icon-128.png"
     }
   },
-  "icons": {
-    "16": "assets/icons/icon16.png",
-    "48": "assets/icons/icon48.png",
-    "128": "assets/icons/icon128.png"
-  },
+
   "content_security_policy": {
-    "extension_pages": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self' http://localhost:3001 https://*.railway.app"
-  }
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none';"
+  },
+
+  "web_accessible_resources": []
 }

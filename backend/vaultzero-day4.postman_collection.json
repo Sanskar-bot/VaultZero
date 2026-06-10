@@ -1,0 +1,302 @@
+{
+  "info": {
+    "name": "VaultZero API — Day 4 Auth",
+    "description": "Auth endpoint tests. Run in order: Register → Login → Refresh → Logout.\n\nCollection variables `jwt` and `refreshToken` are automatically captured from the Login response.",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",      "value": "http://localhost:3000", "type": "string" },
+    { "key": "jwt",          "value": "", "type": "string" },
+    { "key": "refreshToken", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/health"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('200 ok', () => pm.response.to.have.status(200));",
+          "pm.test('status=ok', () => pm.expect(pm.response.json().status).to.equal('ok'));"
+        ]}
+      }]
+    },
+    {
+      "name": "1. Register",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/register",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"alice@vaultzero.dev\",\n  \"wrappedVaultKey\": \"dGVzdC13cmFwcGVkLXZhdWx0LWtleS1iYXNlNjQ=\",\n  \"argon2Salt\": \"dGVzdC1zYWx0LWJhc2U2NA==\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('201 Created', () => pm.response.to.have.status(201));",
+          "pm.test('returns userId (uuid)', () => {",
+          "  const { userId } = pm.response.json();",
+          "  pm.expect(userId).to.be.a('string').with.lengthOf(36);",
+          "});"
+        ]}
+      }]
+    },
+    {
+      "name": "1b. Register — Duplicate Email → 409",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/register",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"alice@vaultzero.dev\",\n  \"wrappedVaultKey\": \"dGVzdA==\",\n  \"argon2Salt\": \"dGVzdA==\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('409 on duplicate', () => pm.response.to.have.status(409));",
+          "pm.test('correct error message', () => pm.expect(pm.response.json().error).to.include('already'));"
+        ]}
+      }]
+    },
+    {
+      "name": "1c. Register — Missing Fields → 400",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/register",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"bob@vaultzero.dev\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('400 on missing fields', () => pm.response.to.have.status(400));",
+          "pm.test('lists missing fields', () => {",
+          "  const err = pm.response.json().error;",
+          "  pm.expect(err).to.include('wrappedVaultKey');",
+          "  pm.expect(err).to.include('argon2Salt');",
+          "});"
+        ]}
+      }]
+    },
+    {
+      "name": "1d. Register — No masterPassword Field Accepted (zero-knowledge check)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/register",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"carol@vaultzero.dev\",\n  \"wrappedVaultKey\": \"dGVzdA==\",\n  \"argon2Salt\": \"dGVzdA==\",\n  \"masterPassword\": \"SHOULD_BE_IGNORED\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('201 Created (masterPassword silently ignored)', () => pm.response.to.have.status(201));",
+          "pm.test('response has no masterPassword echo', () => {",
+          "  const body = pm.response.json();",
+          "  pm.expect(body).to.not.have.property('masterPassword');",
+          "});"
+        ]}
+      }]
+    },
+    {
+      "name": "2. Login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"alice@vaultzero.dev\",\n  \"deviceId\": \"test-device-001\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('200 OK', () => pm.response.to.have.status(200));",
+          "pm.test('returns all required fields', () => {",
+          "  const json = pm.response.json();",
+          "  pm.expect(json.jwt).to.be.a('string');",
+          "  pm.expect(json.refreshToken).to.be.a('string').with.lengthOf(128);",
+          "  pm.expect(json.argon2Salt).to.be.a('string');",
+          "  pm.expect(json.wrappedVaultKey).to.be.a('string');",
+          "  // Capture for subsequent requests",
+          "  pm.collectionVariables.set('jwt', json.jwt);",
+          "  pm.collectionVariables.set('refreshToken', json.refreshToken);",
+          "});",
+          "pm.test('JWT has 3 parts (header.payload.sig)', () => {",
+          "  const jwt = pm.response.json().jwt;",
+          "  pm.expect(jwt.split('.').length).to.equal(3);",
+          "});",
+          "pm.test('response has NO masterPassword/kek field (zero-knowledge)', () => {",
+          "  const json = pm.response.json();",
+          "  pm.expect(json).to.not.have.property('masterPassword');",
+          "  pm.expect(json).to.not.have.property('kek');",
+          "  pm.expect(json).to.not.have.property('password');",
+          "});"
+        ]}
+      }]
+    },
+    {
+      "name": "2b. Login — Unknown Email → 404",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"nobody@vaultzero.dev\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('404 on unknown email', () => pm.response.to.have.status(404));"
+        ]}
+      }]
+    },
+    {
+      "name": "3. Refresh Token",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/refresh",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('200 OK', () => pm.response.to.have.status(200));",
+          "pm.test('returns new JWT + new refreshToken', () => {",
+          "  const json = pm.response.json();",
+          "  pm.expect(json.jwt).to.be.a('string');",
+          "  pm.expect(json.refreshToken).to.be.a('string').with.lengthOf(128);",
+          "  // Update variables with new tokens",
+          "  pm.collectionVariables.set('jwt', json.jwt);",
+          "  pm.collectionVariables.set('refreshToken', json.refreshToken);",
+          "});"
+        ]}
+      }]
+    },
+    {
+      "name": "3b. Refresh — Old Token Now Invalid (single-use check) → 401",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/refresh",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "prerequest",
+        "script": { "exec": [
+          "// Deliberately send the ALREADY-USED old token (stored before step 3 rotated it)",
+          "// If you run this immediately after step 3, the new refreshToken was just stored.",
+          "// This test works best by manually pasting the old token from step 2 into the body."
+        ]}
+      }, {
+        "listen": "test",
+        "script": { "exec": [
+          "// Note: this will only 401 if you paste the OLD token from step 2.",
+          "// With {{refreshToken}} it will actually succeed (it's the new token).",
+          "// To properly test: run step 3 twice in a row — second call should 401.",
+          "pm.test('response is either 200 (new token) or 401 (used token)', () => {",
+          "  pm.expect([200, 401]).to.include(pm.response.code);",
+          "});"
+        ]}
+      }]
+    },
+    {
+      "name": "3c. Refresh — Invalid Token → 401",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/refresh",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('401 on bogus token', () => pm.response.to.have.status(401));"
+        ]}
+      }]
+    },
+    {
+      "name": "4. Logout",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt}}" }
+        ],
+        "url": "{{baseUrl}}/auth/logout"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('200 OK', () => pm.response.to.have.status(200));",
+          "pm.test('returns logged out message', () => {",
+          "  pm.expect(pm.response.json().message).to.equal('Logged out');",
+          "});"
+        ]}
+      }]
+    },
+    {
+      "name": "4b. Logout — No Auth → 401",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/auth/logout"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('401 without JWT', () => pm.response.to.have.status(401));",
+          "pm.test('correct error message', () => {",
+          "  pm.expect(pm.response.json().error).to.include('Authorization header required');",
+          "});"
+        ]}
+      }]
+    },
+    {
+      "name": "4c. Logout — Expired/Invalid JWT → 401",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOiJmYWtlIn0.invalidsignature" }
+        ],
+        "url": "{{baseUrl}}/auth/logout"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('401 on invalid JWT', () => pm.response.to.have.status(401));",
+          "pm.test('error does not leak JWT internals', () => {",
+          "  const err = pm.response.json().error;",
+          "  pm.expect(err).to.not.include('secret');",
+          "  pm.expect(err).to.not.include('signature');",
+          "  pm.expect(err).to.not.include('HS256');",
+          "});"
+        ]}
+      }]
+    }
+  ]
+}

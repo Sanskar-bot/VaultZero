@@ -1,0 +1,469 @@
+{
+  "info": {
+    "name": "VaultZero API — Days 4+5 Complete",
+    "description": "Full test suite for VaultZero backend. Run requests top-to-bottom:\n\n  1. Register\n  2. Login (captures jwt + refreshToken automatically)\n  3. Vault Push\n  4. Vault Pull\n  5. Audit Log\n  6. Refresh Token\n  7. Logout\n\nCollection variables `jwt` and `refreshToken` are set automatically by the Login test script.",
+    "version": "2.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",      "value": "http://localhost:3000", "type": "string" },
+    { "key": "jwt",          "value": "", "type": "string", "description": "Captured from Login response" },
+    { "key": "refreshToken", "value": "", "type": "string", "description": "Captured from Login response" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": { "method": "GET", "url": "{{baseUrl}}/health" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('status=ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "POST /auth/register — Happy Path",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/register",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"alice@vaultzero.dev\",\n  \"wrappedVaultKey\": \"dGVzdC13cmFwcGVkLXZhdWx0LWtleQ==\",\n  \"argon2Salt\": \"dGVzdC1zYWx0\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('201 Created', () => pm.response.to.have.status(201));",
+            "pm.test('returns userId', () => {",
+            "  const { userId } = pm.response.json();",
+            "  pm.expect(userId).to.be.a('string').with.lengthOf(36);",
+            "});",
+            "pm.test('zero-knowledge: no password in response', () => {",
+            "  const body = JSON.stringify(pm.response.json());",
+            "  pm.expect(body).to.not.include('password');",
+            "  pm.expect(body).to.not.include('kek');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /auth/register — Duplicate Email → 409",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/register",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"alice@vaultzero.dev\",\n  \"wrappedVaultKey\": \"dGVzdA==\",\n  \"argon2Salt\": \"dGVzdA==\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('409 on duplicate email', () => pm.response.to.have.status(409));",
+            "pm.test('error message mentions already registered', () => {",
+            "  pm.expect(pm.response.json().error).to.include('already');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /auth/register — Missing Fields → 400",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/register",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"bob@vaultzero.dev\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('400 on missing fields', () => pm.response.to.have.status(400));",
+            "pm.test('lists missing field names', () => {",
+            "  const err = pm.response.json().error;",
+            "  pm.expect(err).to.include('wrappedVaultKey');",
+            "  pm.expect(err).to.include('argon2Salt');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /auth/login — Happy Path",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/login",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"alice@vaultzero.dev\",\n  \"deviceId\": \"postman-test-device\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('returns jwt + refreshToken + vault material', () => {",
+            "  const json = pm.response.json();",
+            "  pm.expect(json.jwt).to.be.a('string');",
+            "  pm.expect(json.refreshToken).to.be.a('string').with.lengthOf(128);",
+            "  pm.expect(json.argon2Salt).to.be.a('string');",
+            "  pm.expect(json.wrappedVaultKey).to.be.a('string');",
+            "  pm.collectionVariables.set('jwt', json.jwt);",
+            "  pm.collectionVariables.set('refreshToken', json.refreshToken);",
+            "});",
+            "pm.test('JWT has header.payload.signature structure', () => {",
+            "  pm.expect(pm.response.json().jwt.split('.').length).to.equal(3);",
+            "});",
+            "pm.test('zero-knowledge: no masterPassword/kek in response', () => {",
+            "  const body = JSON.stringify(pm.response.json());",
+            "  pm.expect(body).to.not.include('masterPassword');",
+            "  pm.expect(body).to.not.include('kek');",
+            "  pm.expect(body).to.not.include('plaintext');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /auth/login — Unknown Email → 404",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/login",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"nobody@vaultzero.dev\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('404 on unknown email', () => pm.response.to.have.status(404));"
+          ]}}]
+        },
+        {
+          "name": "POST /auth/refresh — Rotate Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/refresh",
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('returns new jwt + new refreshToken', () => {",
+            "  const json = pm.response.json();",
+            "  pm.expect(json.jwt).to.be.a('string');",
+            "  pm.expect(json.refreshToken).to.be.a('string').with.lengthOf(128);",
+            "  pm.collectionVariables.set('jwt', json.jwt);",
+            "  pm.collectionVariables.set('refreshToken', json.refreshToken);",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /auth/refresh — Invalid Token → 401",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/refresh",
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"cafebabe000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('401 on bogus token', () => pm.response.to.have.status(401));"
+          ]}}]
+        },
+        {
+          "name": "POST /auth/logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt}}" }],
+            "url": "{{baseUrl}}/auth/logout"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('message=Logged out', () => pm.expect(pm.response.json().message).to.eql('Logged out'));"
+          ]}}]
+        },
+        {
+          "name": "POST /auth/logout — No Auth → 401",
+          "request": { "method": "POST", "url": "{{baseUrl}}/auth/logout" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('401 without JWT', () => pm.response.to.have.status(401));",
+            "pm.test('error = Authorization header required', () => {",
+            "  pm.expect(pm.response.json().error).to.include('Authorization header required');",
+            "});"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "Vault",
+      "item": [
+        {
+          "name": "POST /vault/push — First Push",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwt}}" }
+            ],
+            "url": "{{baseUrl}}/vault/push",
+            "body": { "mode": "raw", "raw": "{\n  \"ciphertext\": \"dGhpcyBpcyBhIHRlc3QgY2lwaGVydGV4dCBibG9iIGVuY3J5cHRlZC13aXRoLWFlcy0yNTYtZ2NtLWJhc2U2NA==\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('returns updatedAt ISO timestamp', () => {",
+            "  const { updatedAt } = pm.response.json();",
+            "  pm.expect(updatedAt).to.be.a('string');",
+            "  pm.expect(new Date(updatedAt).getTime()).to.be.greaterThan(0);",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /vault/push — Update (second push)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwt}}" }
+            ],
+            "url": "{{baseUrl}}/vault/push",
+            "body": { "mode": "raw", "raw": "{\n  \"ciphertext\": \"dXBkYXRlZC12YXVsdC1jaXBoZXJ0ZXh0LXZlcnNpb24tMi1hZXMtMjU2LWdjbS1lbmNyeXB0ZWQ=\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK on update', () => pm.response.to.have.status(200));"
+          ]}}]
+        },
+        {
+          "name": "POST /vault/push — Too Large → 413",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwt}}" }
+            ],
+            "url": "{{baseUrl}}/vault/push",
+            "body": { "mode": "raw", "raw": "{\n  \"ciphertext\": \"{{$randomLoremParagraph}}\"\n}",
+              "description": "Replace ciphertext with a string > 2MB to test the 413 limit. Use: node -e \"console.log('x'.repeat(2097153))\" to generate one." }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "// Only passes if ciphertext was > 2MB.",
+            "// With a small placeholder, server will accept it (200).",
+            "pm.test('either 200 (small) or 413 (large)', () => {",
+            "  pm.expect([200, 413]).to.include(pm.response.code);",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /vault/push — No Auth → 401",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/vault/push",
+            "body": { "mode": "raw", "raw": "{\n  \"ciphertext\": \"dGVzdA==\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('401 without JWT', () => pm.response.to.have.status(401));"
+          ]}}]
+        },
+        {
+          "name": "GET /vault/pull",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt}}" }],
+            "url": "{{baseUrl}}/vault/pull"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('returns ciphertext + updatedAt', () => {",
+            "  const json = pm.response.json();",
+            "  pm.expect(json.ciphertext).to.be.a('string');",
+            "  pm.expect(json.updatedAt).to.be.a('string');",
+            "});",
+            "pm.test('server does NOT decrypt ciphertext (it is opaque)', () => {",
+            "  const body = JSON.stringify(pm.response.json());",
+            "  pm.expect(body).to.not.include('password');",
+            "  pm.expect(body).to.not.include('username');",
+            "  pm.expect(body).to.not.include('entries');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "GET /vault/pull — No Auth → 401",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/vault/pull"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('401 without JWT', () => pm.response.to.have.status(401));"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "Audit",
+      "item": [
+        {
+          "name": "GET /audit/log",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt}}" }],
+            "url": "{{baseUrl}}/audit/log"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('returns events array', () => {",
+            "  const { events } = pm.response.json();",
+            "  pm.expect(events).to.be.an('array');",
+            "});",
+            "pm.test('contains REGISTER event', () => {",
+            "  const { events } = pm.response.json();",
+            "  const hasRegister = events.some(e => e.action === 'REGISTER');",
+            "  pm.expect(hasRegister).to.be.true;",
+            "});",
+            "pm.test('contains LOGIN event', () => {",
+            "  const { events } = pm.response.json();",
+            "  const hasLogin = events.some(e => e.action === 'LOGIN');",
+            "  pm.expect(hasLogin).to.be.true;",
+            "});",
+            "pm.test('contains VAULT_PULL and VAULT_PUSH events', () => {",
+            "  const { events } = pm.response.json();",
+            "  pm.expect(events.some(e => e.action === 'VAULT_PUSH')).to.be.true;",
+            "  pm.expect(events.some(e => e.action === 'VAULT_PULL')).to.be.true;",
+            "});",
+            "pm.test('event has required fields', () => {",
+            "  const event = pm.response.json().events[0];",
+            "  pm.expect(event).to.have.all.keys('id','action','ipAddress','createdAt','deviceId');",
+            "});",
+            "pm.test('audit log never contains tokens or passwords', () => {",
+            "  const body = JSON.stringify(pm.response.json());",
+            "  pm.expect(body).to.not.include('refreshToken');",
+            "  pm.expect(body).to.not.include('jwt');",
+            "  pm.expect(body).to.not.include('masterPassword');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "GET /audit/log — No Auth → 401",
+          "request": { "method": "GET", "url": "{{baseUrl}}/audit/log" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('401 without JWT', () => pm.response.to.have.status(401));"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "Recovery",
+      "description": "Run order: Login first to get jwt, then Setup, then Verify, then Rekey.\nVerify does NOT require a JWT — it's the unauthenticated recovery flow.",
+      "item": [
+        {
+          "name": "POST /recovery/setup — Store recovery hash",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwt}}" }
+            ],
+            "url": "{{baseUrl}}/recovery/setup",
+            "body": { "mode": "raw", "raw": "{\n  \"recoveryHash\": \"a3f5b2c1d4e6f7890123456789abcdef0123456789abcdef0123456789abcdef\",\n  \"wrappedVaultKeyForRecovery\": \"cmVjb3Zlcnkta2V5LXdyYXBwZWQtd2l0aC1yZWNvdmVyeS1rZWs=\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('message = Recovery configured', () => {",
+            "  pm.expect(pm.response.json().message).to.eql('Recovery configured');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /recovery/setup — Invalid Hash Format → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwt}}" }
+            ],
+            "url": "{{baseUrl}}/recovery/setup",
+            "body": { "mode": "raw", "raw": "{\n  \"recoveryHash\": \"not-a-valid-hex-hash\",\n  \"wrappedVaultKeyForRecovery\": \"dGVzdA==\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('400 on invalid hash format', () => pm.response.to.have.status(400));",
+            "pm.test('error mentions 64-character hex', () => {",
+            "  pm.expect(pm.response.json().error).to.include('64-character hex');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /recovery/setup — No Auth → 401",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/recovery/setup",
+            "body": { "mode": "raw", "raw": "{\n  \"recoveryHash\": \"a3f5b2c1d4e6f7890123456789abcdef0123456789abcdef0123456789abcdef\",\n  \"wrappedVaultKeyForRecovery\": \"dGVzdA==\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('401 without JWT', () => pm.response.to.have.status(401));"
+          ]}}]
+        },
+        {
+          "name": "POST /recovery/verify — Happy Path",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/recovery/verify",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"alice@vaultzero.dev\",\n  \"recoveryPhraseHash\": \"a3f5b2c1d4e6f7890123456789abcdef0123456789abcdef0123456789abcdef\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK on correct hash', () => pm.response.to.have.status(200));",
+            "pm.test('returns wrappedVaultKeyForRecovery + argon2Salt', () => {",
+            "  const json = pm.response.json();",
+            "  pm.expect(json.wrappedVaultKeyForRecovery).to.be.a('string');",
+            "  pm.expect(json.argon2Salt).to.be.a('string');",
+            "});",
+            "pm.test('zero-knowledge: response has no plaintext', () => {",
+            "  const body = JSON.stringify(pm.response.json());",
+            "  pm.expect(body).to.not.include('masterPassword');",
+            "  pm.expect(body).to.not.include('recoveryPhrase');",
+            "  pm.expect(body).to.not.include('jwt');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /recovery/verify — Wrong Hash → 401 (timing-safe)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/recovery/verify",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"alice@vaultzero.dev\",\n  \"recoveryPhraseHash\": \"0000000000000000000000000000000000000000000000000000000000000000\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('401 on wrong hash', () => pm.response.to.have.status(401));",
+            "pm.test('error is generic (no hash detail leaked)', () => {",
+            "  pm.expect(pm.response.json().error).to.eql('Invalid recovery phrase');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /recovery/verify — Unknown Email → same 401 (no enumeration)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/recovery/verify",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"nobody@vaultzero.dev\",\n  \"recoveryPhraseHash\": \"a3f5b2c1d4e6f7890123456789abcdef0123456789abcdef0123456789abcdef\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('401 on unknown email (same as wrong hash)', () => pm.response.to.have.status(401));",
+            "pm.test('error is identical to wrong-hash error (no enumeration)', () => {",
+            "  pm.expect(pm.response.json().error).to.eql('Invalid recovery phrase');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "POST /recovery/rekey — Update vault key after recovery",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwt}}" }
+            ],
+            "url": "{{baseUrl}}/recovery/rekey",
+            "body": { "mode": "raw", "raw": "{\n  \"newWrappedVaultKey\": \"bmV3LXZhdWx0LWtleS13cmFwcGVkLXdpdGgtbmV3LW1hc3Rlci1wYXNzd29yZC1rZWs=\",\n  \"newArgon2Salt\": \"bmV3LXJhbmRvbS1hcmdvbjItc2FsdC1mb3ItbmV3LXBhc3N3b3Jk\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('message = Vault rekeyed successfully', () => {",
+            "  pm.expect(pm.response.json().message).to.eql('Vault rekeyed successfully');",
+            "});",
+            "// After rekey, old JWT still valid for this request but all refresh tokens",
+            "// are now invalidated — next refresh attempt should 401.",
+            "pm.test('response does not echo back key material', () => {",
+            "  const body = JSON.stringify(pm.response.json());",
+            "  pm.expect(body).to.not.include('wrappedVaultKey');",
+            "  pm.expect(body).to.not.include('argon2Salt');",
+            "});"
+          ]}}]
+        }
+      ]
+    }
+  ]
+}

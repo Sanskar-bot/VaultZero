@@ -1,2 +1,5 @@
-export { authenticateJWT } from "./auth";
-export { loginRateLimiter, generalRateLimiter } from "./rate-limit";
+/**
+ * Middleware barrel export
+ */
+export { verifyJWT } from "./auth";
+export { authLimiter, standardLimiter } from "./rate-limit";

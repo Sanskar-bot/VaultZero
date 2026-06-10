@@ -1,0 +1,18 @@
+[build]
+builder = "dockerfile"
+# Path is relative to repo root — Railway uses repo root as Docker build context,
+# which is what we need so the Dockerfile can COPY both core/ and backend/
+dockerfilePath = "backend/Dockerfile"
+
+[deploy]
+# prisma db push applies schema.prisma directly to the Railway DB — no migration
+# files needed. Switch to "migrate deploy" once you start using migrations.
+# --schema flag tells Prisma where to find the schema relative to repo root.
+startCommand = "npx prisma db push --schema=backend/prisma/schema.prisma --accept-data-loss && node backend/dist/server.js"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[[services]]
+internalPort = 3000
