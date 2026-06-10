@@ -1,55 +1,54 @@
 # ═══════════════════════════════════════════════════════════════
 # VaultZero Backend — Multi-stage Dockerfile
-# Build context: REPO ROOT (Railway sets this automatically when
-# dockerfilePath = "backend/Dockerfile" is set in railway.toml)
+# Build context: REPO ROOT
 #
-# Why multi-stage?
-#   Stage 1 (builder): installs devDeps, compiles core + backend TypeScript
-#   Stage 2 (runner):  prod deps only, no source, no tsc, smaller image
+# WHY node:20-slim (not node:20-alpine)?
+#   The `argon2` npm package uses native C bindings. Alpine uses musl
+#   libc; Debian uses glibc. Prebuilt `argon2` binaries on npm are
+#   compiled for glibc (linux/amd64). On Alpine (musl), there are no
+#   prebuilt binaries, so npm tries to compile from source — which
+#   requires python3 + make + g++ that aren't in the base image.
+#   node:20-slim (Debian) resolves this: prebuilt binaries load fine.
 #
-# Why copy both core/ and backend/?
-#   @vaultzero/core is a local workspace dep. At runtime, Node resolves
-#   it to core/dist/index.js via the npm workspace symlink. So core must
-#   be compiled (core/dist/) before backend can run in production.
+# WHY Node.js healthcheck (not wget)?
+#   node:20-slim doesn't include wget or curl by default.
+#   A Node.js one-liner is lighter than installing an extra package.
 # ═══════════════════════════════════════════════════════════════
 
 # ── Stage 1: Builder ──────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Copy workspace + package manifests first (layer cache: only reinstalls
-# node_modules when package.json files change, not on every source change)
+# Copy workspace + package manifests (layer cache: only reinstalls
+# when package.json files change, not on every source change)
 COPY package*.json ./
 COPY core/package*.json    ./core/
 COPY backend/package*.json ./backend/
 
-# Install ALL dependencies (devDeps needed for tsc)
-# --workspace flags limit install to only the packages we need
+# Install ALL dependencies (devDeps needed for tsc + prisma generate)
 RUN npm ci --workspace=core --workspace=backend --include-workspace-root
 
-# Copy source files for both packages
-COPY core/src/         ./core/src/
+# Copy source files
+COPY core/src/          ./core/src/
 COPY core/tsconfig.json ./core/tsconfig.json
-COPY backend/src/         ./backend/src/
+COPY backend/src/          ./backend/src/
 COPY backend/tsconfig.json ./backend/tsconfig.json
 COPY backend/prisma/       ./backend/prisma/
 
-# Step 1: Build @vaultzero/core → core/dist/
-# Backend's compiled JS requires('@vaultzero/core') at runtime,
-# which Node resolves via the workspace symlink to core/dist/index.js
+# 1. Build @vaultzero/core → core/dist/
+#    backend's compiled JS requires('@vaultzero/core') which resolves
+#    via npm workspace symlink to core/dist/index.js at runtime
 RUN npm run build --workspace=core
 
-# Step 2: Generate Prisma client (must happen before compiling backend)
+# 2. Generate Prisma client (required before compiling backend TS)
 RUN cd backend && npx prisma generate
 
-# Step 3: Compile backend TypeScript → backend/dist/
-# tsconfig.json paths alias (@vaultzero/core → ../core/src/index.ts)
-# is used only during type-checking. The compiled JS uses the workspace import.
+# 3. Compile backend TypeScript → backend/dist/
 RUN npm run build --workspace=backend
 
 # ── Stage 2: Runner ───────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
 
 ENV NODE_ENV=production
 
@@ -60,25 +59,27 @@ COPY package*.json ./
 COPY core/package*.json    ./core/
 COPY backend/package*.json ./backend/
 
-# Production dependencies only (no tsc, no jest, no eslint)
+# Production dependencies only
+# node:20-slim has glibc so argon2's prebuilt binary loads correctly
 RUN npm ci --workspace=core --workspace=backend --include-workspace-root --omit=dev
 
-# Copy compiled core (needed at runtime by backend's require('@vaultzero/core'))
+# Copy compiled core (required at runtime: require('@vaultzero/core') → core/dist/)
 COPY --from=builder /app/core/dist/ ./core/dist/
 
-# Copy Prisma schema + generate client for production
+# Copy Prisma schema and generate client for production runtime
 COPY backend/prisma/ ./backend/prisma/
 RUN cd backend && npx prisma generate
 
 # Copy compiled backend
 COPY --from=builder /app/backend/dist/ ./backend/dist/
 
-# Non-root user (built into node:alpine)
+# Non-root user for security (built into node images)
 USER node
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:3000/health || exit 1
+# Node.js healthcheck — no wget/curl needed in slim image
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
 CMD ["node", "backend/dist/server.js"]
