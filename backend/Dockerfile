@@ -24,6 +24,9 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
+# Install openssl — required by Prisma to detect libssl version
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+
 # Copy workspace + package manifests first (layer cache optimisation)
 COPY package*.json ./
 COPY core/package*.json    ./core/
@@ -36,7 +39,7 @@ RUN npm ci --workspace=core --workspace=backend --include-workspace-root
 COPY core/src/          ./core/src/
 COPY core/tsconfig.json ./core/tsconfig.json
 COPY backend/src/          ./backend/src/
-COPY backend/tsconfig.json ./backend/tsconfig.json
+COPY backend/tsconfig*.json ./backend/
 COPY backend/prisma/       ./backend/prisma/
 
 # 1. Build @vaultzero/core → core/dist/
@@ -55,7 +58,9 @@ ENV NODE_ENV=production
 
 WORKDIR /app
 
-# Copy package manifests for prod install
+# Install openssl — required by Prisma at runtime
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
 COPY core/package*.json    ./core/
 COPY backend/package*.json ./backend/

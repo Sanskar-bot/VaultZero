@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "tsc --project tsconfig.build.json",
     "start": "node dist/server.js",
     "lint": "eslint src/",
     "prisma:generate": "prisma generate",

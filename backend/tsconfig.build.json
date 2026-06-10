@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "rootDirs": ["src"],
+    "outDir": "dist",
+    "paths": {
+      "@vaultzero/core": ["../core/dist/index"],
+      "@vaultzero/core/*": ["../core/dist/*"]
+    }
+  }
+}
