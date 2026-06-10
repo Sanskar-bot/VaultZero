@@ -5,14 +5,12 @@ builder = "DOCKERFILE"
 dockerfilePath = "backend/Dockerfile"
 
 [deploy]
-# prisma db push applies schema.prisma directly to the Railway DB — no migration
-# files needed. Switch to "migrate deploy" once you start using migrations.
-# --schema flag tells Prisma where to find the schema relative to repo root.
-startCommand = "npx prisma db push --schema=backend/prisma/schema.prisma --accept-data-loss --skip-generate && node backend/dist/server.js"
+# prisma db push runs once in a separate container before the app starts.
+# It applies schema.prisma directly to the Railway DB — no migration files needed.
+# Switch to "migrate deploy" once you start using migrations.
+preDeployCommand = "npx prisma db push --schema=backend/prisma/schema.prisma --accept-data-loss --skip-generate"
+startCommand = "node backend/dist/server.js"
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+healthcheckTimeout = 120
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
-
-[[services]]
-internalPort = 3000
