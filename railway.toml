@@ -1,5 +1,5 @@
 [build]
-builder = "dockerfile"
+builder = "DOCKERFILE"
 # Path is relative to repo root — Railway uses repo root as Docker build context,
 # which is what we need so the Dockerfile can COPY both core/ and backend/
 dockerfilePath = "backend/Dockerfile"
